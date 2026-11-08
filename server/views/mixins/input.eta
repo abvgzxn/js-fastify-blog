@@ -3,6 +3,7 @@
   // после перехода на drizzle записи это обычные объекты, и ключи переводов
   // уехали бы в views.object.*. Приложение оперирует одной сущностью.
   const errors = it.errors ?? [];
+  const translationPrefix = it.translationPrefix ?? 'views.article';
   const errorText = errors
     .filter((error) => error.path === it.propertyName)
     .map(({ message }) => message)
@@ -11,7 +12,7 @@
   const fieldClass = 'w-full rounded border border-gray-300 px-3 py-2';
 %>
 <div class="mb-4">
-  <label class="mb-1 block text-sm font-medium" for="<%= inputId %>"><%= it.t(`views.article.${it.propertyName}.label`) %></label>
+  <label class="mb-1 block text-sm font-medium" for="<%= inputId %>"><%= it.t(`${translationPrefix}.${it.propertyName}.label`) %></label>
   <input
     id="<%= inputId %>"
     name="data[<%= it.propertyName %>]"

@@ -1,9 +1,10 @@
 // @ts-check
 
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import i18next from "i18next";
-import { articles } from "../../db/schema/index.js";
+import { articles, comments } from "../../db/schema/index.js";
 import { validateArticle } from "../validators/article.js";
+import { normalizeComment, validateComment } from "../validators/comment.js";
 
 export default (app) => {
   const findArticle = async (id) => {
@@ -15,6 +16,13 @@ export default (app) => {
 
     return article ?? null;
   };
+
+  const findComments = async (articleId) =>
+    app.db
+      .select()
+      .from(comments)
+      .where(eq(comments.articleId, Number(articleId)))
+      .orderBy(asc(comments.createdAt), asc(comments.id));
 
   const updateArticle = async (req, reply) => {
     const { id } = req.params;
@@ -76,12 +84,56 @@ export default (app) => {
       reply.redirect(app.reverse("articles"));
       return reply;
     })
+    .post("/articles/:articleId/comments", { name: "createComment" }, async (req, reply) => {
+      const { articleId } = req.params;
+      const article = await findArticle(articleId);
+
+      if (!article) {
+        return reply.code(404).send();
+      }
+
+      const comment = normalizeComment(req.body?.data);
+      const { data, errors } = validateComment(comment);
+
+      if (errors) {
+        req.flash("error", i18next.t("views.comments.create.error"));
+        reply.code(422);
+        reply.render("articles/show", {
+          article,
+          comments: await findComments(articleId),
+          comment,
+          errors,
+        });
+        return reply;
+      }
+
+      await app.db.insert(comments).values({ ...data, articleId: Number(articleId) });
+      req.flash("info", i18next.t("views.comments.create.success"));
+      reply.redirect(app.reverse("article", { id: articleId }));
+      return reply;
+    })
     .get("/articles/:id", { name: "article" }, async (req, reply) => {
-      reply.render("articles/show", { article: await findArticle(req.params.id) });
+      const article = await findArticle(req.params.id);
+
+      if (!article) {
+        return reply.code(404).send();
+      }
+
+      reply.render("articles/show", {
+        article,
+        comments: await findComments(req.params.id),
+        comment: { authorName: "", content: "" },
+      });
       return reply;
     })
     .get("/articles/:id/edit", { name: "editArticle" }, async (req, reply) => {
-      reply.render("articles/edit", { article: await findArticle(req.params.id) });
+      const article = await findArticle(req.params.id);
+
+      if (!article) {
+        return reply.code(404).send();
+      }
+
+      reply.render("articles/edit", { article });
       return reply;
     })
     // HTML-форма умеет только GET и POST, поэтому PATCH и DELETE приходят

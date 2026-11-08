@@ -46,6 +46,26 @@ export default {
           placeholder: "Введите содержимое статьи",
         },
       },
+      comments: {
+        header: "Комментарии",
+        empty: "Комментариев пока нет",
+        authorName: {
+          label: "Имя",
+        },
+        content: {
+          label: "Комментарий",
+          placeholder: "Напишите комментарий",
+        },
+        submit: "Добавить комментарий",
+        validation: {
+          authorName: "Имя должно содержать от 2 до 80 символов",
+          content: "Комментарий должен содержать от 1 до 2000 символов",
+        },
+        create: {
+          success: "Комментарий добавлен",
+          error: "Не удалось добавить комментарий",
+        },
+      },
       articles: {
         index: {
           header: "Статьи",

@@ -1,2 +1,40 @@
 <% layout("../layouts/application", { header: it.article.title }) %>
 <%~ include("../mixins/article", { content: it.article.content }) %>
+
+<section class="mt-10">
+  <h2 class="mb-4 text-2xl font-bold"><%= it.t('views.comments.header') %></h2>
+  <% if (it.comments.length === 0) { %>
+  <p class="mb-6 text-gray-600"><%= it.t('views.comments.empty') %></p>
+  <% } else { %>
+  <div class="mb-8 space-y-4">
+    <% it.comments.forEach((comment) => { %>
+    <article class="rounded border border-gray-200 p-4">
+      <div class="flex items-baseline justify-between gap-4">
+        <p class="font-semibold"><%= comment.authorName %></p>
+        <time class="text-sm text-gray-500"><%= it.formatDate(comment.createdAt) %></time>
+      </div>
+      <p class="mt-2 whitespace-pre-wrap"><%= comment.content %></p>
+    </article>
+    <% }) %>
+  </div>
+  <% } %>
+
+  <form action="<%= it.route('createComment', { articleId: it.article.id }) %>" method="post">
+    <%~ include("../mixins/input", {
+      entity: it.comment,
+      propertyName: 'authorName',
+      errors: it.errors,
+      translationPrefix: 'views.comments',
+      type: 'text',
+    }) %>
+    <%~ include("../mixins/textarea", {
+      entity: it.comment,
+      propertyName: 'content',
+      errors: it.errors,
+      translationPrefix: 'views.comments',
+      placeholder: it.t('views.comments.content.placeholder'),
+      rows: 5,
+    }) %>
+    <%~ include("../mixins/submit", { value: it.t('views.comments.submit') }) %>
+  </form>
+</section>
