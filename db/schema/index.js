@@ -15,4 +15,14 @@ export const articles = pgTable("articles", {
   updatedAt: timestamp("updated_at", { mode: "string" }).notNull().defaultNow(),
 });
 
-export default { articles };
+export const comments = pgTable("comments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  articleId: integer("article_id")
+    .notNull()
+    .references(() => articles.id, { onDelete: "cascade" }),
+  authorName: text("author_name").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
+});
+
+export default { articles, comments };

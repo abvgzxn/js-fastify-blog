@@ -43,6 +43,26 @@ export default {
           placeholder: "Enter article content",
         },
       },
+      comments: {
+        header: "Comments",
+        empty: "No comments yet",
+        authorName: {
+          label: "Name",
+        },
+        content: {
+          label: "Comment",
+          placeholder: "Write a comment",
+        },
+        submit: "Add comment",
+        validation: {
+          authorName: "Name must contain 2 to 80 characters",
+          content: "Comment must contain 1 to 2000 characters",
+        },
+        create: {
+          success: "Comment was added",
+          error: "Failed to add comment",
+        },
+      },
       articles: {
         index: {
           header: "Articles",

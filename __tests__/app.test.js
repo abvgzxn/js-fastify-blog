@@ -1,9 +1,9 @@
 // @ts-check
 
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import fastify from "fastify";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { articles } from "../db/schema/index.js";
+import { articles, comments } from "../db/schema/index.js";
 import init from "../server/plugin.js";
 
 // TODO: сейчас каждый тест оставляет после себя артефакты в БД
@@ -31,6 +31,13 @@ describe("requests", () => {
 
     return article ?? null;
   };
+
+  const findCommentsByArticleId = async (articleId) =>
+    app.db
+      .select()
+      .from(comments)
+      .where(eq(comments.articleId, articleId))
+      .orderBy(asc(comments.createdAt), asc(comments.id));
 
   beforeAll(async () => {
     app = fastify({
@@ -274,6 +281,218 @@ describe("requests", () => {
     });
 
     expect(response2.statusCode).toBe(200);
+  });
+
+  test("show missing article - GET /articles/:id", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/articles/999999",
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  test("create comment - POST and redirect to article", async () => {
+    const articleData = {
+      title: "Article for comments",
+      content: "Article content",
+    };
+
+    await app.inject({
+      method: "POST",
+      url: "/articles",
+      payload: { data: articleData },
+    });
+    const article = await findArticle(articleData);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/articles/${article.id}/comments`,
+      payload: {
+        data: {
+          authorName: "  Alice  ",
+          content: "  A useful comment  ",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe(`/articles/${article.id}`);
+    expect(await findCommentsByArticleId(article.id)).toMatchObject([
+      {
+        articleId: article.id,
+        authorName: "Alice",
+        content: "A useful comment",
+      },
+    ]);
+  });
+
+  test("show comments in createdAt and id order", async () => {
+    const articleData = {
+      title: "Article with sorted comments",
+      content: "Article content",
+    };
+
+    await app.inject({
+      method: "POST",
+      url: "/articles",
+      payload: { data: articleData },
+    });
+    const article = await findArticle(articleData);
+    const sameDate = "2026-01-02T12:00:00.000Z";
+
+    await app.db.insert(comments).values([
+      {
+        articleId: article.id,
+        authorName: "Later",
+        content: "later",
+        createdAt: "2026-01-03T12:00:00.000Z",
+      },
+      {
+        articleId: article.id,
+        authorName: "First",
+        content: "first",
+        createdAt: "2026-01-01T12:00:00.000Z",
+      },
+      {
+        articleId: article.id,
+        authorName: "Same first",
+        content: "same first",
+        createdAt: sameDate,
+      },
+      {
+        articleId: article.id,
+        authorName: "Same second",
+        content: "same second",
+        createdAt: sameDate,
+      },
+    ]);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/articles/${article.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.indexOf("First")).toBeLessThan(response.body.indexOf("Same first"));
+    expect(response.body.indexOf("Same first")).toBeLessThan(response.body.indexOf("Same second"));
+    expect(response.body.indexOf("Same second")).toBeLessThan(response.body.indexOf("Later"));
+  });
+
+  test("reject invalid comment and preserve trimmed values", async () => {
+    const articleData = {
+      title: "Article with invalid comment",
+      content: "Article content",
+    };
+
+    await app.inject({
+      method: "POST",
+      url: "/articles",
+      payload: { data: articleData },
+    });
+    const article = await findArticle(articleData);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/articles/${article.id}/comments`,
+      payload: {
+        data: {
+          authorName: "  A  ",
+          content: "  Preserved comment  ",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.body).toContain('value="A"');
+    expect(response.body).toContain("Preserved comment");
+    expect(response.body).toContain("Name must contain 2 to 80 characters");
+    expect(await findCommentsByArticleId(article.id)).toHaveLength(0);
+  });
+
+  test("reject whitespace-only comment fields", async () => {
+    const articleData = {
+      title: "Article with blank comment",
+      content: "Article content",
+    };
+
+    await app.inject({
+      method: "POST",
+      url: "/articles",
+      payload: { data: articleData },
+    });
+    const article = await findArticle(articleData);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/articles/${article.id}/comments`,
+      payload: {
+        data: { authorName: "   ", content: "   " },
+      },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(await findCommentsByArticleId(article.id)).toHaveLength(0);
+  });
+
+  test("escape comment text in article HTML", async () => {
+    const articleData = {
+      title: "Article with escaped comment",
+      content: "Article content",
+    };
+
+    await app.inject({
+      method: "POST",
+      url: "/articles",
+      payload: { data: articleData },
+    });
+    const article = await findArticle(articleData);
+
+    await app.inject({
+      method: "POST",
+      url: `/articles/${article.id}/comments`,
+      payload: {
+        data: {
+          authorName: "Alice",
+          content: '<script>alert("x")</script>',
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/articles/${article.id}`,
+    });
+
+    expect(response.body).toContain("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;");
+    expect(response.body).not.toContain('<script>alert("x")</script>');
+  });
+
+  test("delete article cascades to comments", async () => {
+    const articleData = {
+      title: "Article with comments to delete",
+      content: "Article content",
+    };
+
+    await app.inject({
+      method: "POST",
+      url: "/articles",
+      payload: { data: articleData },
+    });
+    const article = await findArticle(articleData);
+    await app.db.insert(comments).values({
+      articleId: article.id,
+      authorName: "Alice",
+      content: "Will be deleted",
+    });
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/articles/${article.id}`,
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(await findCommentsByArticleId(article.id)).toHaveLength(0);
   });
 
   afterAll(async () => {
